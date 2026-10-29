@@ -1,4 +1,4 @@
-name: Java CI with Gradle
+name: Java CI (No Package Mode)
 
 on:
   push:
@@ -11,14 +11,18 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # --- ЭТАП 1: ПОДГОТОВКА СРЕДЫ ---
+      
       - name: Checkout code
         uses: actions/checkout@v4
+        # Скачивает твой код на раннер
 
       - name: Set up JDK 11
         uses: actions/setup-java@v5
         with:
           java-version: '11'
           distribution: 'temurin'
+          # Устанавливает Java 11, необходимую для компиляции
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -28,64 +32,74 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
-            \${{ runner.os }}-gradle-
+            ${{ runner.os }}-gradle-
+        # Кэширует зависимости Gradle, чтобы не качать их каждый раз заново
 
-      # 1. Сборка проекта (без тестов)
+      # --- ЭТАП 2: СБОРКА ПРОЕКТА (БЕЗ ТЕСТОВ) ---
+
       - name: Build project (compile only)
         shell: cmd
         run: .\gradlew.bat build -x test
+        # Компилирует код. Если тут ошибка — дальше нет смысла идти.
 
-      # 2. Запуск SUT в фоне
-      # ВАЖНО: start /B запускает процесс и сразу возвращает управление следующему шагу.
-      # Если у тебя SutServer.java имеет package (например, package ru.netology.qa;), 
-      # раскомментируй строку с полным именем класса и закомментируй первую.
+      # --- ЭТАП 3: ЗАПУСК SUT (СЕРВЕРА) В ФОНЕ ---
+
       - name: Start SUT (System Under Test)
         shell: cmd
         run: |
+          REM ВАЖНО: start "WINDOW_TITLE" /B запускает процесс в фоне.
+          REM Окно с заголовком "SUT Server" нужно, чтобы потом его легко убить через taskkill.
+          REM Путь build\classes\java\main содержит скомпилированные .class файлы.
           start "SUT Server" /B java -cp build\classes\java\main SutServer
-          REM start "SUT Server" /B java -cp build\classes\java\main ru.netology.qa.SutServer
 
-      # 3. Ожидание готовности SUT
+      # --- ЭТАП 4: ОЖИДАНИЕ ГОТОВНОСТИ СЕРВЕРА ---
+      # Критически важно: shell: powershell, иначе переменные $maxTries не сработают
+      
       - name: Wait for SUT to be ready
         shell: powershell
         run: |
-          \$maxTries = 60
-          \$try = 0
-          \$uri = 'http://localhost:9999'
+          $maxTries = 60
+          $try = 0
+          $uri = 'http://localhost:9999'
 
           while ($try -lt $maxTries) {
             try {
-              # Используем GET. -ErrorAction SilentlyContinue скрывает ошибки соединения, чтобы цикл работал
               $resp = Invoke-WebRequest -Uri $uri -Method Get -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue
               
-              # Принимаем любой статус от 200 до 499 (сервер жив, даже если страница 404)
               if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
                 Write-Host "SUT is ready (Status: $($resp.StatusCode))" -ForegroundColor Green
                 exit 0
+              } else {
+                Write-Host "SUT returned status $($resp.StatusCode). Waiting..." -ForegroundColor Yellow
               }
             } catch {
-              Write-Host "Waiting for SUT... try \$try" -ForegroundColor Yellow
+              Write-Host "Waiting for SUT... try $try. Error: $($_.Exception.Message)" -ForegroundColor Red
             }
             Start-Sleep -Seconds 2
-            \$try++
+            $try++
           }
           Write-Host "SUT did not start in time." -ForegroundColor Red
           exit 1
 
-      # 4. Запуск тестов
+      # --- ЭТАП 5: ЗАПУСК ТЕСТОВ ---
+
       - name: Run tests
         shell: cmd
         run: .\gradlew.bat test
         env:
           APP_URL: "http://localhost:9999"
+        # Тесты запускаются только после того, как сервер ответил на запрос
 
-      # 5. Остановка SUT
+      # --- ЭТАП 6: ОСТАНОВКА SUT (ВЫПОЛНЯЕТСЯ ВСЕГДА) ---
+
       - name: Stop SUT
         if: always()
         shell: cmd
         run: taskkill /F /FI "WINDOWTITLE eq SUT Server" || echo No SUT process to kill
+        # Корректно завершает процесс сервера, даже если тесты упали
 
-      # 6. Загрузка отчетов
+      # --- ЭТАП 7: ЗАГРУЗКА ОТЧЁТОВ ---
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
