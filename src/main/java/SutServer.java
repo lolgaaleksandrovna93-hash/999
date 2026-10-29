@@ -1,38 +1,66 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 
 public class SutServer {
-    // ВАЖНО: обязательно String[] args (массив!), а не String args
     public static void main(String[] args) throws IOException {
         int port = getPortFromArgs(args);
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-
-        System.out.println("SUT Server starting on port: " + port);
-
         server.createContext("/", new FormHandler());
         server.setExecutor(null);
+
+        // Запускаем сервер (неблокирующий вызов)
         server.start();
+        System.out.println("SUT Server starting on port: " + port);
+
+        // Ждем, пока порт физически не откроется
+        waitForPortToBeReady(port);
 
         System.out.println("SUT Server is running (CI mode).");
 
-        // Бесконечный цикл держит сервер живым. В CI его остановит taskkill.
+        // Бесконечный цикл, чтобы процесс не завершился
         while (true) {
             try {
                 Thread.sleep(10000);
             } catch (InterruptedException e) {
                 System.out.println("Shutdown signal received.");
-                server.stop(0);
                 break;
             }
         }
+
+        server.stop(0);
+    }
+
+    private static void waitForPortToBeReady(int port) {
+        int maxTries = 30;
+        int tryCount = 0;
+        while (tryCount < maxTries) {
+            try {
+                // Пытаемся создать сокет, подключенный к самому себе
+                java.net.Socket socket = new java.net.Socket("localhost", port);
+                socket.close();
+                // Если подключение удалось — выходим из цикла
+                return;
+            } catch (IOException e) {
+                // Порт еще закрыт, ждем
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+                tryCount++;
+            }
+        }
+        throw new RuntimeException("Port " + port + " did not open in time.");
     }
 
     private static int getPortFromArgs(String[] args) {
-        // Проверяем, что args — это массив и он не пуст
         if (args != null && args.length > 0) {
             String portArg = args[0];
             if (!portArg.isBlank()) {
@@ -50,7 +78,6 @@ public class SutServer {
         @Override
         public void handle(HttpExchange t) throws IOException {
             String remoteAddr = t.getRemoteAddress().toString();
-
             System.out.println("Request received from: " + remoteAddr +
                     " | Method: " + t.getRequestMethod() +
                     " | Path: " + t.getRequestURI());
@@ -65,4 +92,3 @@ public class SutServer {
         }
     }
 }
-
