@@ -28,64 +28,65 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-
+            \${{ runner.os }}-gradle-
 
-      # 1. Сначала собираем проект БЕЗ тестов
+      # 1. Собираем проект БЕЗ тестов. 
+      # Никаких needs здесь не нужно. Шаги идут по порядку.
       - name: Build project (compile only)
         shell: cmd
         run: .\gradlew.bat build -x test
 
-      # 2. Запускаем SUT в фоновом режиме
+      # 2. Запускаем SUT в фоновом режиме.
+      # start /B запускает процесс и сразу возвращает управление следующему шагу.
       - name: Start SUT (System Under Test)
-        id: start-sut
         shell: cmd
-        # ВАЖНО: Если в SutServer.java есть package (например, package ru.netology.qa;), 
-        # раскомментируй строку ниже и закомментируй первую.
-        run: start "SUT Server" /B java -cp build\classes\java\main SutServer
-        # run: start "SUT Server" /B java -cp build\classes\java\main ru.netology.qa.SutServer
+        run: |
+          start "SUT Server" /B java -cp build\classes\java\main SutServer
+          # Если в SutServer.java есть package (например, package ru.netology.qa;), 
+          # раскомментируй строку ниже и закомментируй первую:
+          # start "SUT Server" /B java -cp build\classes\java\main ru.netology.qa.SutServer
 
-      # 3. Ждем, пока SUT станет доступен
+      # 3. Ждем, пока SUT станет доступен.
+      # Этот шаг начнется ТОЛЬКО после того, как завершится шаг "Start SUT".
       - name: Wait for SUT to be ready
-        id: wait-sut
-        needs: start-sut
         shell: powershell
         run: |
-          $maxTries = 60
-          $try = 0
-          $uri = 'http://localhost:9999'
+          \$maxTries = 60
+          \$try = 0
+          \$uri = 'http://localhost:9999'
 
           while ($try -lt $maxTries) {
             try {
-              # Используем GET, так как ваш сервер может возвращать 405 Method Not Allowed на HEAD
+              # Используем GET. -ErrorAction SilentlyContinue скрывает ошибки соединения, чтобы цикл работал
               $resp = Invoke-WebRequest -Uri $uri -Method Get -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue
               
-              # Принимаем любой статус от 200 до 499 (сервер жив и отвечает)
+              # Если статус от 200 до 499 — сервер жив (даже если страница 404)
               if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
                 Write-Host "SUT is ready (Status: $($resp.StatusCode))"
                 exit 0
               }
             } catch {
-              Write-Host "Waiting for SUT... try $try"
+              Write-Host "Waiting for SUT... try \$try"
             }
             Start-Sleep -Seconds 2
-            $try++
+            \$try++
           }
           Write-Host "SUT did not start in time."
           exit 1
 
-      # 4. Запускаем тесты (только если SUT готов)
+      # 4. Запускаем тесты.
+      # Начнется только после успешного завершения шага "Wait for SUT".
       - name: Run tests
-        needs: wait-sut
         shell: cmd
         run: .\gradlew.bat test
         env:
           APP_URL: "http://localhost:9999"
 
-      # 5. Останавливаем SUT
+      # 5. Останавливаем SUT.
+      # Выполнится всегда (даже если тесты упали), благодаря if: always()
       - name: Stop SUT
         if: always()
         shell: cmd
-        # Убиваем процесс по заголовку окна, который мы задали в шаге Start SUT
         run: taskkill /F /FI "WINDOWTITLE eq SUT Server" || echo No SUT process to kill
 
       # 6. Загружаем отчеты
