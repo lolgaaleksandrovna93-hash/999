@@ -1,10 +1,10 @@
-name: Java CI with Gradle (CMD, fixed SUT start)
+name: Java CI with Gradle
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -14,42 +14,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Set up JDK 11
         uses: actions/setup-java@v5
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      - name: Build project
+      - name: Build project (without tests)
         shell: cmd
         run: .\gradlew.bat build -x test --no-daemon
 
-      - name: Start SUT
+      - name: Start SUT (System Under Test)
         id: start-sut
         shell: cmd
-        # ИСПРАВЛЕНО: Убран пакет com.example.sut., так как в коде нет строки package ...
         run: start /B java -cp build\classes\java\main SutServer
 
       - name: Wait for SUT to be ready
-        shell: cmd
+        shell: powershell
         run: |
-          set MAX_TRIES=60
-          set TRY=0
-          :loop
-          if %TRY% GEQ %MAX_TRIES% (
-            echo SUT did not start in time.
-            exit /b 1
-          )
-          powershell -Command "try { Invoke-WebRequest -Uri http://localhost:9999 -Method Head -TimeoutSec 5 } catch { exit 1 }"
-          if %ERRORLEVEL% EQU 0 (
-            echo SUT is ready.
-            goto :end
-          )
-          echo Waiting for SUT... try %TRY%
-          timeout /t 2 /nobreak >nul
-          set /a TRY+=1
-          goto :loop
-          :end
+          \$maxTries = 60
+          \$try = 0
+          while ($try -lt $maxTries) {
+            try {
+              \$response = Invoke-WebRequest -Uri "http://localhost:9999" -Method Head -TimeoutSec 5 -UseBasicParsing
+              if (\$response.StatusCode -eq 200) {
+                Write-Host "SUT is ready."
+                exit 0
+              }
+            } catch {
+              Write-Host "Waiting for SUT... try \$try"
+            }
+            Start-Sleep -Seconds 2
+            \$try++
+          }
+          Write-Host "SUT did not start in time."
+          exit 1
 
       - name: Run tests
         shell: cmd
