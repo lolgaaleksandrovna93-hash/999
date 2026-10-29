@@ -1,18 +1,22 @@
 plugins {
     id 'java'
+    id 'application' // Нужен для задачи ./gradlew run
 }
 
 group 'ru.netology'
 version '1.0-SNAPSHOT'
 
-// используем 11 версию языка
 java {
     sourceCompatibility = 11
 }
 
-// кодировка файлов (если используете русский язык в файлах)
 compileJava.options.encoding = "UTF-8"
 compileTestJava.options.encoding = "UTF-8"
+
+application {
+    // Убедись, что имя класса совпадает с твоим файлом SutServer.java
+    mainClass = 'ru.netology.SutServer' 
+}
 
 repositories {
     mavenCentral()
@@ -26,6 +30,5 @@ dependencies {
 
 test {
     useJUnitPlatform()
-    // свойство chromeoptions.prefs используется для задания настроек браузера в проектах на основе Selenide, выключаем менеджер паролей
     systemProperty 'chromeoptions.prefs', System.getProperty('chromeoptions.prefs', "profile.password_manager_leak_detection=false")
 }
