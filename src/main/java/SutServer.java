@@ -1,12 +1,12 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
 public class SutServer {
-    public static void main(String args) throws IOException {
+    // ВАЖНО: обязательно String[] args (массив!), а не String args
+    public static void main(String[] args) throws IOException {
         int port = getPortFromArgs(args);
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -19,14 +19,11 @@ public class SutServer {
 
         System.out.println("SUT Server is running (CI mode).");
 
-        // ВАЖНО: Вместо ожидания ввода (readLine), который вешает CI,
-        // используем бесконечный цикл. Сервер будет жить, пока его не убьёт taskkill.
+        // Бесконечный цикл держит сервер живым. В CI его остановит taskkill.
         while (true) {
             try {
-                Thread.sleep(10000); // Спим 10 секунд, чтобы не грузить CPU
+                Thread.sleep(10000);
             } catch (InterruptedException e) {
-                // Если кто-то попытается корректно остановить сервер (не в CI),
-                // он прервёт этот сон. В CI мы всё равно используем taskkill.
                 System.out.println("Shutdown signal received.");
                 server.stop(0);
                 break;
@@ -34,9 +31,10 @@ public class SutServer {
         }
     }
 
-    private static int getPortFromArgs(String args) {
+    private static int getPortFromArgs(String[] args) {
+        // Проверяем, что args — это массив и он не пуст
         if (args != null && args.length > 0) {
-            String portArg = args;
+            String portArg = args[0];
             if (!portArg.isBlank()) {
                 try {
                     return Integer.parseInt(portArg);
