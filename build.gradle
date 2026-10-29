@@ -14,7 +14,7 @@ compileJava.options.encoding = "UTF-8"
 compileTestJava.options.encoding = "UTF-8"
 
 application {
-    // ИСПРАВЛЕНИЕ: Так как пакета нет, указываем просто имя класса
+    // ВАЖНО: Так как пакета нет, указываем просто имя класса
     mainClass = 'SutServer'
 }
 
