@@ -1,42 +1,63 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 
-// ВАЖНО: здесь НЕ должно быть строки package ...
 public class SutServer {
     public static void main(String[] args) throws IOException {
         int port = getPortFromArgs(args);
 
-        System.out.println("Starting SUT on port: " + port);
-
-        HttpServer server;
-        try {
-            // Создаём сервер. bind произойдёт при start()
-            server = HttpServer.create(new InetSocketAddress(port), 0);
-        } catch (IOException e) {
-            System.err.println("Failed to bind port " + port + ": " + e.getMessage());
-            e.printStackTrace();
-            return; // Завершаем сразу, чтобы CI показал ошибку
-        }
-
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/", new FormHandler());
         server.setExecutor(null);
+
+        // Запускаем сервер (неблокирующий вызов)
         server.start();
+        System.out.println("SUT Server starting on port: " + port);
 
-        System.out.println("SUT Server started and listening on port: " + port);
+        // Ждем, пока порт физически не откроется
+        waitForPortToBeReady(port);
 
-        // Бесконечный цикл — сервер должен жить, пока его не убьёт CI
+        System.out.println("SUT Server is running (CI mode).");
+
+        // Бесконечный цикл, чтобы процесс не завершился
         while (true) {
             try {
                 Thread.sleep(10000);
             } catch (InterruptedException e) {
                 System.out.println("Shutdown signal received.");
-                server.stop(0);
                 break;
             }
         }
+
+        server.stop(0);
+    }
+
+    private static void waitForPortToBeReady(int port) {
+        int maxTries = 30;
+        int tryCount = 0;
+        while (tryCount < maxTries) {
+            try {
+                // Пытаемся создать сокет, подключенный к самому себе
+                java.net.Socket socket = new java.net.Socket("localhost", port);
+                socket.close();
+                // Если подключение удалось — выходим из цикла
+                return;
+            } catch (IOException e) {
+                // Порт еще закрыт, ждем
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+                tryCount++;
+            }
+        }
+        throw new RuntimeException("Port " + port + " did not open in time.");
     }
 
     private static int getPortFromArgs(String[] args) {
@@ -60,3 +81,14 @@ public class SutServer {
             System.out.println("Request received from: " + remoteAddr +
                     " | Method: " + t.getRequestMethod() +
                     " | Path: " + t.getRequestURI());
+
+            String responseBody = "<h1>SUT is running</h1><p>Port: " +
+                    t.getLocalAddress().getPort() +
+                    "</p>";
+
+            t.sendResponseHeaders(200, responseBody.length());
+            t.getResponseBody().write(responseBody.getBytes());
+            t.getResponseBody().close();
+        }
+    }
+}
