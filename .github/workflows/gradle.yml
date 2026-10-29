@@ -1,4 +1,3 @@
-
 name: Java CI with Gradle
 
 on:
@@ -21,7 +20,6 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      # Кэширование Gradle (ускоряет сборку)
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -30,57 +28,67 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
-            \${{ runner.os }}-gradle-
+            ${{ runner.os }}-gradle-
 
-      - name: Build project (without tests)
+      # 1. Сначала собираем проект БЕЗ тестов
+      - name: Build project (compile only)
         shell: cmd
         run: .\gradlew.bat build -x test
 
-      # Запуск SUT в фоновом режиме (чтобы пайплайн не завис на этом шаге)
+      # 2. Запускаем SUT в фоновом режиме
       - name: Start SUT (System Under Test)
         id: start-sut
         shell: cmd
-        # Если у тебя есть package (например, package ru.netology.qa;), раскомментируй строку с полным именем класса
-        # run: start /B java -cp build\classes\java\main ru.netology.qa.SutServer
-        run: start /B java -cp build\classes\java\main SutServer
+        # ВАЖНО: Если в SutServer.java есть package (например, package ru.netology.qa;), 
+        # раскомментируй строку ниже и закомментируй первую.
+        run: start "SUT Server" /B java -cp build\classes\java\main SutServer
+        # run: start "SUT Server" /B java -cp build\classes\java\main ru.netology.qa.SutServer
 
-      # Ожидание готовности SUT (ИСПРАВЛЕНО: GET + диапазон 200-499)
+      # 3. Ждем, пока SUT станет доступен
       - name: Wait for SUT to be ready
-        shell: cmd
+        id: wait-sut
+        needs: start-sut
+        shell: powershell
         run: |
-          powershell -NoProfile -Command "
-            \$maxTries = 60;
-            \$try = 0;
-            while (\$try -lt \$maxTries) {
-              try {
-                \$resp = Invoke-WebRequest -Uri 'http://localhost:9999' -Method Get -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue;
-                if (\$resp.StatusCode -ge 200 -and \$resp.StatusCode -lt 500) {
-                  Write-Host 'SUT is ready (Status: ' + \$resp.StatusCode + ')';
-                  exit 0;
-                }
-              } catch {
-                Write-Host 'Waiting for SUT... try ' + \$try;
-              }
-              Start-Sleep -Seconds 2;
-              \$try++;
-            };
-            Write-Host 'SUT did not start in time.';
-            exit 1
-          "
+          $maxTries = 60
+          $try = 0
+          $uri = 'http://localhost:9999'
 
+          while ($try -lt $maxTries) {
+            try {
+              # Используем GET, так как ваш сервер может возвращать 405 Method Not Allowed на HEAD
+              $resp = Invoke-WebRequest -Uri $uri -Method Get -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue
+              
+              # Принимаем любой статус от 200 до 499 (сервер жив и отвечает)
+              if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
+                Write-Host "SUT is ready (Status: $($resp.StatusCode))"
+                exit 0
+              }
+            } catch {
+              Write-Host "Waiting for SUT... try $try"
+            }
+            Start-Sleep -Seconds 2
+            $try++
+          }
+          Write-Host "SUT did not start in time."
+          exit 1
+
+      # 4. Запускаем тесты (только если SUT готов)
       - name: Run tests
+        needs: wait-sut
         shell: cmd
         run: .\gradlew.bat test
         env:
           APP_URL: "http://localhost:9999"
 
-      # Остановка SUT (выполняется всегда, даже если тесты упали)
+      # 5. Останавливаем SUT
       - name: Stop SUT
         if: always()
         shell: cmd
-        run: taskkill /F /IM java.exe || echo No java process to kill
+        # Убиваем процесс по заголовку окна, который мы задали в шаге Start SUT
+        run: taskkill /F /FI "WINDOWTITLE eq SUT Server" || echo No SUT process to kill
 
-      # Загрузка отчётов (выполняется всегда)
+      # 6. Загружаем отчеты
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
