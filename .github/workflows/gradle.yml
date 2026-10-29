@@ -30,14 +30,66 @@ jobs:
           restore-keys: |
             \${{ runner.os }}-gradle-
 
-      # ЗАПУСК ТВОЕГО СКРИПТА
-      - name: Run CI Pipeline Script
+      # 1. Сборка проекта (без тестов)
+      - name: Build project (compile only)
+        shell: cmd
+        run: .\gradlew.bat build -x test
+
+      # 2. Запуск SUT в фоне
+      # ВАЖНО: start /B запускает процесс и сразу возвращает управление следующему шагу.
+      # Если у тебя SutServer.java имеет package (например, package ru.netology.qa;), 
+      # раскомментируй строку с полным именем класса и закомментируй первую.
+      - name: Start SUT (System Under Test)
+        shell: cmd
+        run: |
+          start "SUT Server" /B java -cp build\classes\java\main SutServer
+          REM start "SUT Server" /B java -cp build\classes\java\main ru.netology.qa.SutServer
+
+      # 3. Ожидание готовности SUT
+      - name: Wait for SUT to be ready
         shell: powershell
-        # ВАЖНО: Путь должен совпадать с реальным расположением файла!
-        # Если файл в корне:
-        run: .\run-ci.ps1
-        # Если файл в папке 999:
-        # run: .\999\run-ci.ps1
-        
+        run: |
+          \$maxTries = 60
+          \$try = 0
+          \$uri = 'http://localhost:9999'
+
+          while ($try -lt $maxTries) {
+            try {
+              # Используем GET. -ErrorAction SilentlyContinue скрывает ошибки соединения, чтобы цикл работал
+              $resp = Invoke-WebRequest -Uri $uri -Method Get -TimeoutSec 5 -UseBasicParsing -ErrorAction SilentlyContinue
+              
+              # Принимаем любой статус от 200 до 499 (сервер жив, даже если страница 404)
+              if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
+                Write-Host "SUT is ready (Status: $($resp.StatusCode))" -ForegroundColor Green
+                exit 0
+              }
+            } catch {
+              Write-Host "Waiting for SUT... try \$try" -ForegroundColor Yellow
+            }
+            Start-Sleep -Seconds 2
+            \$try++
+          }
+          Write-Host "SUT did not start in time." -ForegroundColor Red
+          exit 1
+
+      # 4. Запуск тестов
+      - name: Run tests
+        shell: cmd
+        run: .\gradlew.bat test
         env:
           APP_URL: "http://localhost:9999"
+
+      # 5. Остановка SUT
+      - name: Stop SUT
+        if: always()
+        shell: cmd
+        run: taskkill /F /FI "WINDOWTITLE eq SUT Server" || echo No SUT process to kill
+
+      # 6. Загрузка отчетов
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: build/reports/tests/test/
+          retention-days: 7
