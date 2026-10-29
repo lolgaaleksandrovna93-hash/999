@@ -29,26 +29,25 @@ jobs:
         shell: cmd
         run: start /B java -cp build\classes\java\main SutServer
 
-      - name: Wait for SUT to be ready
-        shell: powershell
+      - name: Wait for SUT to be ready (CMD loop)
+        shell: cmd
         run: |
-          \$maxTries = 60
-          \$try = 0
-          while ($try -lt $maxTries) {
-            try {
-              \$response = Invoke-WebRequest -Uri "http://localhost:9999" -Method Head -TimeoutSec 5 -UseBasicParsing
-              if (\$response.StatusCode -eq 200) {
-                Write-Host "SUT is ready."
-                exit 0
-              }
-            } catch {
-              Write-Host "Waiting for SUT... try \$try"
-            }
-            Start-Sleep -Seconds 2
-            \$try++
-          }
-          Write-Host "SUT did not start in time."
-          exit 1
+          set MAX_TRIES=60
+          set /a TRY=0
+          :loop
+          if %TRY% GEQ %MAX_TRIES% (
+            echo SUT did not start in time.
+            exit /b 1
+          )
+          curl -f -s -o nul http://localhost:9999
+          if %ERRORLEVEL% EQU 0 (
+            echo SUT is ready.
+            exit /b 0
+          )
+          echo Waiting for SUT... try %TRY%
+          set /a TRY+=1
+          timeout /t 2 /nobreak >nul
+          goto loop
 
       - name: Run tests
         shell: cmd
