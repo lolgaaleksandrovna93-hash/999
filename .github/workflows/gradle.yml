@@ -20,41 +20,54 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
+      # --- НОВЫЙ ШАГ: Кэширование Gradle ---
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            \${{ runner.os }}-gradle-
+      # --------------------------------------
+
       - name: Build project (without tests)
         shell: cmd
-        run: .\gradlew.bat build -x test --no-daemon
+        # Убрали --no-daemon, он иногда конфликтует с кэшем, но можно оставить, если критично
+        run: .\gradlew.bat build -x test
 
-      # ВАЖНО: Мы убрали start /B, чтобы видеть ошибки сервера в логах!
+      # Шаг запуска SUT (исправленный, без start /B)
       - name: Start SUT (System Under Test)
         id: start-sut
         shell: cmd
+        # ВАЖНО: Если у тебя пакет (package), раскомментируй вторую строку и закомментируй первую
         run: java -cp build\classes\java\main SutServer
-        # Если у тебя сервер в пакете, например ru.netology.qa, раскомментируй строку ниже и закомментируй верхнюю:
-        # run: java -cp build\classes\java\main ru.netology.qa.SutServer
+        # run: java -cp build\classes\java\main ru.netology.qa.SutServer 
 
       - name: Wait for SUT to be ready
-        # Этот шаг запустится ТОЛЬКО если шаг Start SUT завершился успешно (код 0)
-        # Если сервер упал с ошибкой, этот шаг даже не начнется, и ты увидишь ошибку выше.
+        if: always() # Ждем даже если сборка прошла странно, но лучше ставить зависимость
         shell: cmd
         run: powershell -NoProfile -Command "$maxTries=60;$try=0;while($try -lt $maxTries) { try { $resp=Invoke-WebRequest -Uri 'http://localhost:9999' -Method Head -TimeoutSec 5 -UseBasicParsing; if ($resp.StatusCode -eq 200) { Write-Host 'SUT is ready.'; exit 0; } } catch { Write-Host 'Waiting for SUT... try ' + $try; } Start-Sleep -Seconds 2; $try++; }; Write-Host 'SUT did not start in time.'; exit 1"
 
       - name: Run tests
+        if: always()
         shell: cmd
-        run: .\gradlew.bat test --no-daemon
+        run: .\gradlew.bat test
         env:
           APP_URL: "http://localhost:9999"
 
       - name: Stop SUT
         if: always()
         shell: cmd
-        # Теперь это может не сработать, если сервер упал сам, но это нормально
         run: taskkill /F /IM java.exe || echo No java process to kill
 
       - name: Upload test reports
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: test-reports
           path: build/reports/tests/test/
           retention-days: 7
+
 
