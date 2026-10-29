@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,8 +27,17 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            \${{ runner.os }}-gradle-
 
-      # Запускаем твой исправленный скрипт
-      - name: Run CI Pipeline
+      # ЗАПУСК ТВОЕГО СКРИПТА
+      - name: Run CI Pipeline Script
         shell: powershell
-        run: .\999\run-ci.ps1
+        # ВАЖНО: Путь должен совпадать с реальным расположением файла!
+        # Если файл в корне:
+        run: .\run-ci.ps1
+        # Если файл в папке 999:
+        # run: .\999\run-ci.ps1
+        
+        env:
+          APP_URL: "http://localhost:9999"
