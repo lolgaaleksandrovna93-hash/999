@@ -31,18 +31,8 @@ jobs:
 
       - name: Wait for SUT to be ready
         shell: cmd
-        run: |
-          powershell -NoProfile -Command ^
-            "$maxTries = 60; $try = 0; " ^
-            "while ($try -lt $maxTries) { " ^
-            "  try { " ^
-            "    \$resp = Invoke-WebRequest -Uri 'http://localhost:9999' -Method Head -TimeoutSec 5 -UseBasicParsing; " ^
-            "    if (\$resp.StatusCode -eq 200) { Write-Host 'SUT is ready.'; exit 0; } " ^
-            "  } catch { Write-Host 'Waiting for SUT... try ' + \$try; } " ^
-            "  Start-Sleep -Seconds 2; " ^
-            "  \$try++; " ^
-            "} " ^
-            "Write-Host 'SUT did not start in time.'; exit 1"
+        # ВАЖНО: вся команда ниже должна быть в ОДНУ строку в YAML файле
+        run: powershell -NoProfile -Command "$maxTries=60;$try=0;while($try -lt $maxTries) { try { $resp=Invoke-WebRequest -Uri 'http://localhost:9999' -Method Head -TimeoutSec 5 -UseBasicParsing; if ($resp.StatusCode -eq 200) { Write-Host 'SUT is ready.'; exit 0; } } catch { Write-Host 'Waiting for SUT... try ' + $try; } Start-Sleep -Seconds 2; $try++; }; Write-Host 'SUT did not start in time.'; exit 1"
 
       - name: Run tests
         shell: cmd
