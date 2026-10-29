@@ -1,0 +1,71 @@
+name: Java CI with Gradle (CMD, fixed SUT start)
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Build project
+        shell: cmd
+        run: .\gradlew.bat build -x test --no-daemon
+
+      - name: Start SUT
+        id: start-sut
+        shell: cmd
+        # ИСПРАВЛЕНО: Убран пакет com.example.sut., так как в коде нет строки package ...
+        run: start /B java -cp build\classes\java\main SutServer
+
+      - name: Wait for SUT to be ready
+        shell: cmd
+        run: |
+          set MAX_TRIES=60
+          set TRY=0
+          :loop
+          if %TRY% GEQ %MAX_TRIES% (
+            echo SUT did not start in time.
+            exit /b 1
+          )
+          powershell -Command "try { Invoke-WebRequest -Uri http://localhost:9999 -Method Head -TimeoutSec 5 } catch { exit 1 }"
+          if %ERRORLEVEL% EQU 0 (
+            echo SUT is ready.
+            goto :end
+          )
+          echo Waiting for SUT... try %TRY%
+          timeout /t 2 /nobreak >nul
+          set /a TRY+=1
+          goto :loop
+          :end
+
+      - name: Run tests
+        shell: cmd
+        run: .\gradlew.bat test --no-daemon
+        env:
+          APP_URL: "http://localhost:9999"
+
+      - name: Stop SUT
+        if: always()
+        shell: cmd
+        run: taskkill /F /IM java.exe || echo No java process to kill
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: build/reports/tests/test/
+          retention-days: 7
