@@ -11,7 +11,6 @@ public class SutServer {
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
-     
         System.out.println("SUT Server starting on port: " + port);
 
         server.createContext("/", new FormHandler());
@@ -20,10 +19,10 @@ public class SutServer {
 
         System.out.println("SUT Server is running. Waiting for shutdown signal...");
 
-
+        // Бесконечный цикл, чтобы процесс не завершился сразу после server.start()
         while (true) {
             try {
-                Thread.sleep(10000); 
+                Thread.sleep(10000);
             } catch (InterruptedException e) {
                 System.out.println("Shutdown signal received.");
                 break;
@@ -34,11 +33,16 @@ public class SutServer {
     }
 
     private static int getPortFromArgs(String args) {
-        if (args.length > 0 && !args.isBlank()) {
-            try {
-                return Integer.parseInt(args);
-            } catch (NumberFormatException e) {
-                System.err.println("Invalid port specified: '" + args + "', using default port.");
+        // Сначала проверяем, что массив не пустой
+        if (args != null && args.length > 0) {
+            String portArg = args;
+            // Проверяем, что строка не пустая и не состоит только из пробелов
+            if (!portArg.isBlank()) {
+                try {
+                    return Integer.parseInt(portArg);
+                } catch (NumberFormatException e) {
+                    System.err.println("Invalid port specified: '" + portArg + "', using default port.");
+                }
             }
         }
         return 9999;
@@ -63,3 +67,4 @@ public class SutServer {
         }
     }
 }
+
