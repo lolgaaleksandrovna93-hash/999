@@ -2,13 +2,11 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 
 public class SutServer {
-    public static void main(String[] args) throws IOException {
+    public static void main(String args) throws IOException {
         int port = getPortFromArgs(args);
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -19,25 +17,26 @@ public class SutServer {
         server.setExecutor(null);
         server.start();
 
-        System.out.println("SUT Server is running. Press Enter to stop...");
+        System.out.println("SUT Server is running (CI mode).");
 
-        // Ожидание нажатия Enter для корректного завершения (удобно для локальной разработки)
-        // В CI-окружении (GitHub Actions) консоли нет, процесс будет убит командой taskkill.
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-            reader.readLine();
-        } catch (IOException ignored) {
-            // Игнорируем ошибку, если поток ввода недоступен (например, в некоторых IDE или CI)
+        // ВАЖНО: Вместо ожидания ввода (readLine), который вешает CI,
+        // используем бесконечный цикл. Сервер будет жить, пока его не убьёт taskkill.
+        while (true) {
+            try {
+                Thread.sleep(10000); // Спим 10 секунд, чтобы не грузить CPU
+            } catch (InterruptedException e) {
+                // Если кто-то попытается корректно остановить сервер (не в CI),
+                // он прервёт этот сон. В CI мы всё равно используем taskkill.
+                System.out.println("Shutdown signal received.");
+                server.stop(0);
+                break;
+            }
         }
-
-        System.out.println("Shutdown signal received.");
-        server.stop(0);
     }
 
-    private static int getPortFromArgs(String[] args) {
-        // Сначала проверяем, что массив не пустой
+    private static int getPortFromArgs(String args) {
         if (args != null && args.length > 0) {
-            String portArg = args[0]; // Берем первый аргумент
-            // Проверяем, что строка не пустая и не состоит только из пробелов
+            String portArg = args;
             if (!portArg.isBlank()) {
                 try {
                     return Integer.parseInt(portArg);
