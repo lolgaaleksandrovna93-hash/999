@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'application' // Нужен для задачи ./gradlew run
+    id 'application'
 }
 
 group 'ru.netology'
@@ -14,8 +14,8 @@ compileJava.options.encoding = "UTF-8"
 compileTestJava.options.encoding = "UTF-8"
 
 application {
-    // Убедись, что имя класса совпадает с твоим файлом SutServer.java
-    mainClass = 'ru.netology.SutServer' 
+    // ИСПРАВЛЕНИЕ: Так как пакета нет, указываем просто имя класса
+    mainClass = 'SutServer'
 }
 
 repositories {
