@@ -24,14 +24,18 @@ jobs:
         shell: cmd
         run: .\gradlew.bat build -x test --no-daemon
 
+      # ВАЖНО: Мы убрали start /B, чтобы видеть ошибки сервера в логах!
       - name: Start SUT (System Under Test)
         id: start-sut
         shell: cmd
-        run: start /B java -cp build\classes\java\main SutServer
+        run: java -cp build\classes\java\main SutServer
+        # Если у тебя сервер в пакете, например ru.netology.qa, раскомментируй строку ниже и закомментируй верхнюю:
+        # run: java -cp build\classes\java\main ru.netology.qa.SutServer
 
       - name: Wait for SUT to be ready
+        # Этот шаг запустится ТОЛЬКО если шаг Start SUT завершился успешно (код 0)
+        # Если сервер упал с ошибкой, этот шаг даже не начнется, и ты увидишь ошибку выше.
         shell: cmd
-        # ВАЖНО: вся команда ниже должна быть в ОДНУ строку в YAML файле
         run: powershell -NoProfile -Command "$maxTries=60;$try=0;while($try -lt $maxTries) { try { $resp=Invoke-WebRequest -Uri 'http://localhost:9999' -Method Head -TimeoutSec 5 -UseBasicParsing; if ($resp.StatusCode -eq 200) { Write-Host 'SUT is ready.'; exit 0; } } catch { Write-Host 'Waiting for SUT... try ' + $try; } Start-Sleep -Seconds 2; $try++; }; Write-Host 'SUT did not start in time.'; exit 1"
 
       - name: Run tests
@@ -43,6 +47,7 @@ jobs:
       - name: Stop SUT
         if: always()
         shell: cmd
+        # Теперь это может не сработать, если сервер упал сам, но это нормально
         run: taskkill /F /IM java.exe || echo No java process to kill
 
       - name: Upload test reports
@@ -52,3 +57,4 @@ jobs:
           name: test-reports
           path: build/reports/tests/test/
           retention-days: 7
+
