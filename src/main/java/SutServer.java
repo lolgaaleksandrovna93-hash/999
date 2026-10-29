@@ -2,11 +2,13 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 
 public class SutServer {
-    public static void main(String args) throws IOException {
+    public static void main(String[] args) throws IOException {
         int port = getPortFromArgs(args);
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -17,25 +19,24 @@ public class SutServer {
         server.setExecutor(null);
         server.start();
 
-        System.out.println("SUT Server is running. Waiting for shutdown signal...");
+        System.out.println("SUT Server is running. Press Enter to stop...");
 
-        // Бесконечный цикл, чтобы процесс не завершился сразу после server.start()
-        while (true) {
-            try {
-                Thread.sleep(10000);
-            } catch (InterruptedException e) {
-                System.out.println("Shutdown signal received.");
-                break;
-            }
+        // Ожидание нажатия Enter для корректного завершения (удобно для локальной разработки)
+        // В CI-окружении (GitHub Actions) консоли нет, процесс будет убит командой taskkill.
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+            reader.readLine();
+        } catch (IOException ignored) {
+            // Игнорируем ошибку, если поток ввода недоступен (например, в некоторых IDE или CI)
         }
 
+        System.out.println("Shutdown signal received.");
         server.stop(0);
     }
 
-    private static int getPortFromArgs(String args) {
+    private static int getPortFromArgs(String[] args) {
         // Сначала проверяем, что массив не пустой
         if (args != null && args.length > 0) {
-            String portArg = args;
+            String portArg = args[0]; // Берем первый аргумент
             // Проверяем, что строка не пустая и не состоит только из пробелов
             if (!portArg.isBlank()) {
                 try {
